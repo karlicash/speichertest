@@ -1,0 +1,11 @@
+{
+  "name": "A03 · Speicher-Test",
+  "short_name": "A03 Test",
+  "display": "standalone",
+  "start_url": ".",
+  "background_color": "#14141a",
+  "theme_color": "#b45309",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

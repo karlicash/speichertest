@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Ohne diese Zeile öffnet iOS die Seite vom Home-Bildschirm ggf. nur als Safari-Ansicht,
+     und genau der Unterschied Safari/installierte App ist hier der Messgegenstand. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="A03 Test">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>A03 · Speicher-Test</title>
+<style>
+  :root {
+    --hintergrund: #f7f7f5; --karte: #ffffff; --text: #1c1c1a; --gedimmt: #6b6b66;
+    --rand: #e2e2de; --akzent: #b45309; --gruen: #166534; --gruen-fond: #dcfce7;
+    --blau: #1d4ed8; --blau-fond: #dbeafe; --rot: #b91c1c; --rot-fond: #fee2e2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --hintergrund: #14141a; --karte: #1e1e26; --text: #ecece8; --gedimmt: #9a9a94;
+      --rand: #32323c; --akzent: #f59e0b; --gruen: #4ade80; --gruen-fond: #143620;
+      --blau: #93c5fd; --blau-fond: #172a54; --rot: #fca5a5; --rot-fond: #451a1a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0 auto; padding: 1rem 1rem 3rem; max-width: 40rem;
+    background: var(--hintergrund); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.45;
+  }
+  h1 { font-size: 1.3rem; margin: .5rem 0 1rem; }
+  .banner {
+    padding: 1rem; border-radius: .75rem; font-size: 1.25rem; font-weight: 700;
+    text-align: center; margin-bottom: 1rem;
+  }
+  .banner.app { background: var(--gruen-fond); color: var(--gruen); }
+  .banner.tab { background: var(--blau-fond); color: var(--blau); }
+  .warnung { background: var(--rot-fond); color: var(--rot); padding: .8rem 1rem;
+    border-radius: .75rem; margin-bottom: 1rem; font-weight: 600; }
+  .karte {
+    background: var(--karte); border: 1px solid var(--rand); border-radius: .75rem;
+    padding: .9rem 1rem; margin-bottom: .8rem;
+  }
+  .karte h2 { font-size: 1rem; margin: 0 0 .4rem; display: flex; justify-content: space-between; }
+  .karte h2 .status { font-weight: 600; }
+  .merkwort { font-size: 1.9rem; font-weight: 800; letter-spacing: .03em; margin: .2rem 0; }
+  .einzelheiten { color: var(--gedimmt); font-size: .92rem; }
+  .fehlertext { color: var(--rot); font-size: .92rem; overflow-wrap: anywhere; }
+  button {
+    display: block; width: 100%; padding: 1rem; margin: .6rem 0; border-radius: .75rem;
+    border: none; font-size: 1.15rem; font-weight: 700; cursor: pointer;
+    background: var(--akzent); color: #fff;
+  }
+  button.nebenrolle { background: var(--karte); color: var(--text); border: 1px solid var(--rand); }
+  button:disabled { opacity: .55; }
+  details { margin-top: 1.2rem; color: var(--gedimmt); }
+  details summary { cursor: pointer; font-weight: 600; }
+  .protokoll { font-size: .85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .umfeld { font-size: .9rem; color: var(--gedimmt); }
+  .umfeld b { color: var(--text); }
+  footer { margin-top: 2rem; font-size: .8rem; color: var(--gedimmt); text-align: center; }
+  .loeschen { background: var(--rot-fond); color: var(--rot); }
+</style>
+</head>
+<body>
+
+<h1>A03 · Speicher-Test</h1>
+<div id="banner" class="banner"></div>
+<div id="warnungen"></div>
+
+<div id="speicherkarten"></div>
+
+<div class="karte umfeld" id="umfeld"></div>
+
+<button id="ablegen">📝 Neues Merkwort ablegen</button>
+<button id="neuladen" class="nebenrolle">🔄 Seite neu laden</button>
+
+<details>
+  <summary>Ereignis-Protokoll</summary>
+  <div class="protokoll" id="protokoll"></div>
+</details>
+
+<details>
+  <summary>Aufräumen (nur wenn ein Testlauf von vorn beginnen soll)</summary>
+  <button id="loeschen" class="loeschen">🗑 Alle Testdaten auf diesem Gerät löschen</button>
+</details>
+
+<footer>Fassung 1 · 13.08.2026 · Messwerkzeug zu Zettel A03 (#32) des Projekts karlicram</footer>
+
+<script>
+'use strict';
+
+const MB = 1024 * 1024;
+const DATEN_GROESSE = 25 * MB;   // je Speicherart, damit die Ablage in der Schätzung sichtbar ist
+const WOERTER = ['TIGER','APFEL','BIRNE','DELFIN','FUCHS','KIRSCHE','ADLER','ZEBRA',
+                 'MANGO','IGEL','KOALA','ZITRONE','PANDA','TRAUBE','OTTER','MELONE',
+                 'WOLF','PFLAUME','LUCHS','BEERE','MOEWE','KAKTUS','BIBER','HONIG'];
+
+// ---------- Allgemeines ----------
+
+function istInstalliert() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+function kontextName() { return istInstalliert() ? 'Installierte App' : 'Browser-Tab'; }
+
+function neuesMerkwort() {
+  const wort = WOERTER[Math.floor(Math.random() * WOERTER.length)];
+  const zahl = String(Math.floor(Math.random() * 90) + 10);
+  return wort + '-' + zahl;
+}
+
+function zeitText(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric',
+                                     hour: '2-digit', minute: '2-digit' }) + ' Uhr';
+}
+
+function mbText(bytes) {
+  if (bytes == null) return '–';
+  return (bytes / MB).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MB';
+}
+
+function zufallsDaten(anzahlBytes) {
+  // crypto.getRandomValues füllt höchstens 65536 Bytes je Aufruf
+  const puffer = new Uint8Array(anzahlBytes);
+  for (let i = 0; i < anzahlBytes; i += 65536) {
+    crypto.getRandomValues(puffer.subarray(i, Math.min(i + 65536, anzahlBytes)));
+  }
+  return puffer;
+}
+
+// ---------- Ereignis-Protokoll (liegt in localStorage) ----------
+
+function protokolliere(text) {
+  let liste = [];
+  try { liste = JSON.parse(localStorage.getItem('a03-protokoll') || '[]'); } catch (e) {}
+  liste.push(new Date().toISOString() + ' · ' + kontextName() + ' · ' + text);
+  while (liste.length > 60) liste.shift();
+  try { localStorage.setItem('a03-protokoll', JSON.stringify(liste)); } catch (e) {}
+}
+
+function protokollText() {
+  try {
+    const liste = JSON.parse(localStorage.getItem('a03-protokoll') || '[]');
+    if (!liste.length) return '(leer)';
+    return liste.slice().reverse()
+      .map(z => z.replace(/^([^ ·]+)/, t => zeitText(t))).join('\n');
+  } catch (e) { return '(nicht lesbar: ' + e + ')'; }
+}
+
+// ---------- localStorage ----------
+
+function lsSchreiben(zettel) {
+  localStorage.setItem('a03-merkzettel', JSON.stringify(zettel));
+}
+function lsLesen() {
+  let roh;
+  try { roh = localStorage.getItem('a03-merkzettel'); }
+  catch (e) { return { status: 'fehler', meldung: String(e) }; }
+  if (roh === null) return { status: 'leer' };
+  try { return { status: 'gefunden', zettel: JSON.parse(roh), groesse: roh.length }; }
+  catch (e) { return { status: 'fehler', meldung: String(e) }; }
+}
+
+// ---------- IndexedDB ----------
+
+function idbOeffnen() {
+  return new Promise((erfolg, fehler) => {
+    const anfrage = indexedDB.open('a03-test', 1);
+    anfrage.onupgradeneeded = () => anfrage.result.createObjectStore('ablage');
+    anfrage.onsuccess = () => erfolg(anfrage.result);
+    anfrage.onerror = () => fehler(anfrage.error);
+    anfrage.onblocked = () => fehler(new Error('Datenbank blockiert'));
+  });
+}
+
+async function idbSchreiben(zettel, daten) {
+  const db = await idbOeffnen();
+  try {
+    await new Promise((erfolg, fehler) => {
+      const tx = db.transaction('ablage', 'readwrite');
+      tx.objectStore('ablage').put(zettel, 'merkzettel');
+      tx.objectStore('ablage').put(new Blob([daten]), 'daten');
+      tx.oncomplete = erfolg;
+      tx.onerror = () => fehler(tx.error);
+      tx.onabort = () => fehler(tx.error || new Error('Transaktion abgebrochen'));
+    });
+  } finally { db.close(); }
+}
+
+async function idbLesen() {
+  let db;
+  try { db = await idbOeffnen(); }
+  catch (e) { return { status: 'fehler', meldung: 'Öffnen: ' + e }; }
+  try {
+    const hole = (schluessel) => new Promise((erfolg, fehler) => {
+      const anfrage = db.transaction('ablage', 'readonly').objectStore('ablage').get(schluessel);
+      anfrage.onsuccess = () => erfolg(anfrage.result);
+      anfrage.onerror = () => fehler(anfrage.error);
+    });
+    const zettel = await hole('merkzettel');
+    const daten = await hole('daten');
+    if (zettel === undefined && daten === undefined) return { status: 'leer' };
+    if (zettel === undefined) return { status: 'teilweise', meldung: 'Daten da, Merkzettel fehlt' };
+    return { status: 'gefunden', zettel, groesse: daten ? daten.size : null };
+  } catch (e) { return { status: 'fehler', meldung: String(e) }; }
+  finally { if (db) db.close(); }
+}
+
+function idbLoeschen() {
+  return new Promise((erfolg, fehler) => {
+    const anfrage = indexedDB.deleteDatabase('a03-test');
+    anfrage.onsuccess = erfolg;
+    anfrage.onerror = () => fehler(anfrage.error);
+    anfrage.onblocked = erfolg; // wird beim nächsten Laden abgeräumt
+  });
+}
+
+// ---------- OPFS ----------
+
+function opfsVorhanden() {
+  return !!(navigator.storage && navigator.storage.getDirectory);
+}
+
+const WORKER_QUELLE = `
+self.onmessage = async (nachricht) => {
+  try {
+    const { name, daten } = nachricht.data;
+    const wurzel = await navigator.storage.getDirectory();
+    const handle = await wurzel.getFileHandle(name, { create: true });
+    const zugriff = await handle.createSyncAccessHandle();
+    zugriff.truncate(0);
+    zugriff.write(daten);
+    zugriff.flush();
+    zugriff.close();
+    self.postMessage({ ok: true });
+  } catch (fehler) {
+    self.postMessage({ ok: false, meldung: String(fehler) });
+  }
+};`;
+
+function opfsWorkerSchreiben(name, daten) {
+  return new Promise((erfolg, fehler) => {
+    const url = URL.createObjectURL(new Blob([WORKER_QUELLE], { type: 'text/javascript' }));
+    const worker = new Worker(url);
+    const aufraeumen = () => { worker.terminate(); URL.revokeObjectURL(url); };
+    worker.onmessage = (n) => { aufraeumen(); n.data.ok ? erfolg('worker') : fehler(new Error(n.data.meldung)); };
+    worker.onerror = (n) => { aufraeumen(); fehler(new Error('Worker: ' + n.message)); };
+    worker.postMessage({ name, daten }, [daten.buffer]);
+  });
+}
+
+async function opfsDateiSchreiben(name, daten) {
+  const wurzel = await navigator.storage.getDirectory();
+  const handle = await wurzel.getFileHandle(name, { create: true });
+  if (handle.createWritable) {
+    const schreiber = await handle.createWritable();
+    await schreiber.write(daten);
+    await schreiber.close();
+    return 'createWritable';
+  }
+  return opfsWorkerSchreiben(name, daten);
+}
+
+async function opfsSchreiben(zettel, daten) {
+  const kodierer = new TextEncoder();
+  await opfsDateiSchreiben('merkzettel.json', kodierer.encode(JSON.stringify(zettel)));
+  await opfsDateiSchreiben('daten.bin', daten);
+}
+
+async function opfsLesen() {
+  if (!opfsVorhanden()) return { status: 'fehlt', meldung: 'OPFS gibt es in diesem Browser nicht' };
+  try {
+    const wurzel = await navigator.storage.getDirectory();
+    let zettel, groesse = null;
+    try {
+      const handle = await wurzel.getFileHandle('merkzettel.json');
+      zettel = JSON.parse(await (await handle.getFile()).text());
+    } catch (e) { if (e.name !== 'NotFoundError') throw e; }
+    try {
+      const handle = await wurzel.getFileHandle('daten.bin');
+      groesse = (await handle.getFile()).size;
+    } catch (e) { if (e.name !== 'NotFoundError') throw e; }
+    if (zettel === undefined && groesse === null) return { status: 'leer' };
+    if (zettel === undefined) return { status: 'teilweise', meldung: 'Daten da, Merkzettel fehlt' };
+    return { status: 'gefunden', zettel, groesse };
+  } catch (e) { return { status: 'fehler', meldung: String(e) }; }
+}
+
+async function opfsLoeschen() {
+  if (!opfsVorhanden()) return;
+  const wurzel = await navigator.storage.getDirectory();
+  for (const name of ['merkzettel.json', 'daten.bin']) {
+    try { await wurzel.removeEntry(name); }
+    catch (e) { if (e.name !== 'NotFoundError') throw e; }
+  }
+}
+
+// ---------- Anzeige ----------
+
+function statusText(ergebnis) {
+  return { gefunden: '✅ gefunden', leer: '⚪️ leer', teilweise: '🟡 teilweise',
+           fehlt: '⚠️ nicht verfügbar', fehler: '⚠️ Fehler' }[ergebnis.status] || ergebnis.status;
+}
+
+function karteHtml(name, ergebnis) {
+  let inhalt = '';
+  if (ergebnis.status === 'gefunden' && ergebnis.zettel) {
+    const z = ergebnis.zettel;
+    inhalt = '<div class="merkwort">' + (z.merkwort || '?') + '</div>' +
+      '<div class="einzelheiten">abgelegt: ' + zeitText(z.zeit) + ' · aus: ' + (z.kontext || '?') +
+      '<br>Daten: ' + mbText(ergebnis.groesse) +
+      (z.persist ? ' · Reservierung damals: ' + z.persist : '') + '</div>';
+  } else if (ergebnis.status === 'leer') {
+    inhalt = '<div class="einzelheiten">Hier liegt nichts.</div>';
+  } else if (ergebnis.meldung) {
+    inhalt = '<div class="fehlertext">' + ergebnis.meldung + '</div>';
+  }
+  return '<div class="karte"><h2>' + name +
+         '<span class="status">' + statusText(ergebnis) + '</span></h2>' + inhalt + '</div>';
+}
+
+async function umfeldHtml() {
+  const teile = [];
+  teile.push('<b>Adresse:</b> ' + location.origin);
+  teile.push('<b>Sichere Verbindung:</b> ' + (window.isSecureContext ? 'ja' : 'NEIN'));
+  if (navigator.storage && navigator.storage.persisted) {
+    try { teile.push('<b>Reservierung (persisted) gerade:</b> ' + (await navigator.storage.persisted() ? 'ja' : 'nein')); }
+    catch (e) { teile.push('<b>Reservierung:</b> Abfrage schlug fehl'); }
+  } else { teile.push('<b>Reservierung:</b> Abfrage gibt es hier nicht'); }
+  if (navigator.storage && navigator.storage.estimate) {
+    try {
+      const s = await navigator.storage.estimate();
+      teile.push('<b>Speicher-Schätzung:</b> belegt ' + mbText(s.usage) + ' von erlaubt ' +
+                 (s.quota != null ? (s.quota / (1024 * MB)).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' GB' : '–'));
+    } catch (e) { teile.push('<b>Speicher-Schätzung:</b> schlug fehl'); }
+  }
+  teile.push('<b>Browser-Kennung:</b> <span style="font-size:.8em">' + navigator.userAgent + '</span>');
+  return teile.join('<br>');
+}
+
+async function anzeigen() {
+  const banner = document.getElementById('banner');
+  banner.textContent = 'Du bist hier: ' + kontextName();
+  banner.className = 'banner ' + (istInstalliert() ? 'app' : 'tab');
+
+  const warnungen = document.getElementById('warnungen');
+  warnungen.innerHTML = window.isSecureContext ? '' :
+    '<div class="warnung">Keine sichere Verbindung (kein HTTPS) — OPFS lässt sich so nicht messen.</div>';
+
+  // Jede Abfrage einzeln absichern: Ein kaputter Speicher darf die Anzeige
+  // der anderen nie verhindern — die Fehlermeldung IST dann das Messergebnis.
+  const sicher = async (lesen) => {
+    try { return await lesen(); }
+    catch (e) { return { status: 'fehler', meldung: String(e) }; }
+  };
+  const [idb, opfs, ls] = [await sicher(idbLesen), await sicher(opfsLesen), await sicher(lsLesen)];
+  document.getElementById('speicherkarten').innerHTML =
+    karteHtml('IndexedDB', idb) + karteHtml('OPFS', opfs) + karteHtml('localStorage', ls);
+
+  try { document.getElementById('umfeld').innerHTML = await umfeldHtml(); }
+  catch (e) { document.getElementById('umfeld').textContent = 'Umfeld nicht lesbar: ' + e; }
+  document.getElementById('protokoll').textContent = protokollText();
+}
+
+// ---------- Handlungen ----------
+
+async function ablegen() {
+  const knopf = document.getElementById('ablegen');
+  knopf.disabled = true;
+  const fehlerliste = [];
+  try {
+    let persistErgebnis = 'Abfrage gibt es hier nicht';
+    if (navigator.storage && navigator.storage.persist) {
+      try { persistErgebnis = (await navigator.storage.persist()) ? 'gewährt' : 'abgelehnt'; }
+      catch (e) { persistErgebnis = 'schlug fehl'; }
+    }
+    const zettel = { merkwort: neuesMerkwort(), zeit: new Date().toISOString(),
+                     kontext: kontextName(), persist: persistErgebnis, fassung: 1 };
+
+    knopf.textContent = 'Erzeuge Testdaten …';
+    const daten = zufallsDaten(DATEN_GROESSE);
+
+    knopf.textContent = 'Lege ab: localStorage …';
+    try { lsSchreiben(zettel); } catch (e) { fehlerliste.push('localStorage: ' + e); }
+
+    knopf.textContent = 'Lege ab: IndexedDB (' + mbText(DATEN_GROESSE) + ') …';
+    try { await idbSchreiben(zettel, daten); } catch (e) { fehlerliste.push('IndexedDB: ' + e); }
+
+    knopf.textContent = 'Lege ab: OPFS (' + mbText(DATEN_GROESSE) + ') …';
+    if (opfsVorhanden()) {
+      // eigene Zufallsdaten, weil der Worker-Weg den Puffer überträgt statt kopiert
+      try { await opfsSchreiben(zettel, zufallsDaten(DATEN_GROESSE)); }
+      catch (e) { fehlerliste.push('OPFS: ' + e); }
+    }
+
+    protokolliere('Merkwort ' + zettel.merkwort + ' abgelegt · Reservierung: ' + persistErgebnis +
+                  (fehlerliste.length ? ' · FEHLER: ' + fehlerliste.join(' | ') : ''));
+    if (fehlerliste.length) alert('Teilweise fehlgeschlagen:\n' + fehlerliste.join('\n'));
+  } finally {
+    knopf.disabled = false;
+    knopf.textContent = '📝 Neues Merkwort ablegen';
+    await anzeigen();
+  }
+}
+
+async function allesLoeschen() {
+  if (!confirm('Wirklich alle Testdaten auf diesem Gerät löschen?\n(Beginnt einen Testlauf von vorn.)')) return;
+  const fehlerliste = [];
+  try { localStorage.removeItem('a03-merkzettel'); localStorage.removeItem('a03-protokoll'); }
+  catch (e) { fehlerliste.push('localStorage: ' + e); }
+  try { await idbLoeschen(); } catch (e) { fehlerliste.push('IndexedDB: ' + e); }
+  try { await opfsLoeschen(); } catch (e) { fehlerliste.push('OPFS: ' + e); }
+  protokolliere('Alles gelöscht' + (fehlerliste.length ? ' · FEHLER: ' + fehlerliste.join(' | ') : ''));
+  if (fehlerliste.length) alert('Teilweise fehlgeschlagen:\n' + fehlerliste.join('\n'));
+  await anzeigen();
+}
+
+document.getElementById('ablegen').addEventListener('click', () => { ablegen(); });
+document.getElementById('neuladen').addEventListener('click', () => location.reload());
+document.getElementById('loeschen').addEventListener('click', () => { allesLoeschen(); });
+
+protokolliere('Seite geöffnet');
+anzeigen();
+</script>
+</body>
+</html>
