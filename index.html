@@ -120,6 +120,7 @@ function zeitText(iso) {
 
 function mbText(bytes) {
   if (bytes == null) return '–';
+  if (bytes < 102400) return (bytes / 1024).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' KB';
   return (bytes / MB).toLocaleString('de-DE', { maximumFractionDigits: 1 }) + ' MB';
 }
 
